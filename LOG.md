@@ -8,4 +8,4 @@ Waypoint navigation using ROS
 -- tf between Motive and ROS not set. Transforming manually for now
 
 ## References
-[1] Flying Multiple UAVs Using ROS”, Springer Book on Robot Operating System (ROS), 2017 [pre-print]<http://usc-actlab.github.io/publications/Hoenig_Springer_ROS2017.pdf>
+[1] Flying Multiple UAVs Using ROS”, Springer Book on Robot Operating System (ROS), 2017. [pre-print](http://usc-actlab.github.io/publications/Hoenig_Springer_ROS2017.pdf)
