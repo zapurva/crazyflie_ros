@@ -151,7 +151,7 @@ private:
                 }
                 else
                 {
-                    m_thrust += 10000 * dt;
+                    m_thrust += 14500 * dt;
                     geometry_msgs::Twist msg;
                     msg.linear.z = m_thrust;
                     m_pubNav.publish(msg);

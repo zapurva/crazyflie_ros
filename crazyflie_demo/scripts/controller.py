@@ -38,11 +38,11 @@ class Controller():
     def _joyChanged(self, data):
         for i in range(0, len(data.buttons)):
             if self._buttons == None or data.buttons[i] != self._buttons[i]:
-                if i == 0 and data.buttons[i] == 1 and self._land != None:
+                if i == 12 and data.buttons[i] == 1 and self._land != None:
                     self._land()
-                if i == 1 and data.buttons[i] == 1:
+                if i == 13 and data.buttons[i] == 1:
                     self._emergency()
-                if i == 2 and data.buttons[i] == 1 and self._takeoff != None:
+                if i == 14 and data.buttons[i] == 1 and self._takeoff != None:
                     self._takeoff()
                 if i == 4 and data.buttons[i] == 1:
                     value = int(rospy.get_param("ring/headlightEnable"))
