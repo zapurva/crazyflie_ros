@@ -31,8 +31,15 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 add_service_files(
   FILES
   AddCrazyflie.srv
+  GoTo.srv
+  Land.srv
   RemoveCrazyflie.srv
+  SetGroupMask.srv
+  StartTrajectory.srv
+  Stop.srv
+  Takeoff.srv
   UpdateParams.srv
+  UploadTrajectory.srv
   sendPacket.srv
 )
 
@@ -41,7 +48,10 @@ add_message_files(
   LogBlock.msg
   GenericLogData.msg
   FullState.msg
+  TrajectoryPolynomialPiece.msg
   crtpPacket.msg
+  Hover.msg
+  Position.msg
 )
 
 ## Generate added messages and services with any dependencies listed here
