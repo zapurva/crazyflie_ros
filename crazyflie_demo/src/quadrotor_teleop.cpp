@@ -64,7 +64,7 @@ private:
 
 public:
   Teleop()
-  {
+  { 
     ros::NodeHandle params("~");
 
     params.param<int>("x_axis", axes_.x.axis, 4);
@@ -73,7 +73,6 @@ public:
     params.param<int>("yaw_axis", axes_.yaw.axis, 1);
 
     params.param<double>("yaw_velocity_max", axes_.yaw.max, 90.0 * M_PI / 180.0);
-
     params.param<double>("x_velocity_max", axes_.x.max, 2.0);
     params.param<double>("y_velocity_max", axes_.y.max, 2.0);
     params.param<double>("z_velocity_max", axes_.z.max, 2.0);
@@ -91,6 +90,7 @@ public:
 
   void execute()
   {
+    ROS_INFO("Executing teleop");
     ros::Rate loop_rate(frequency_);
     while (ros::ok()) {
       velocity_publisher_.publish(velocity_);
