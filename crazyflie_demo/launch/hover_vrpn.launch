@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="joy_dev" default="/dev/input/js0" />
-  <arg name="server" default="130.194.137.58" />
+  <arg name="server" default="130.194.137.214" />
   <arg name="port" default="3883" />
 
   <arg name="uri" default="radio://0/85/2M/E7E7E7E704" />
@@ -28,7 +28,7 @@
       <param name="use_crazyflie_controller" value="True" />
     </node>
 
-    <include file="$(find crazyflie_controller)/launch/crazyflie2.launch">
+    <include file="$(find crazyflie_controller)/launch/init_controller.launch">
       <arg name="frame" value="$(arg frame)" />
     </include>
 
