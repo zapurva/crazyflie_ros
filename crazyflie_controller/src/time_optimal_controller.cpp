@@ -65,6 +65,7 @@ public:
         , m_state(Idle)
         , m_goal()
         , m_subscribeGoal()
+        , m_subscribeTwist()
         , m_serviceTakeoff()
         , m_serviceLand()
         , m_thrust(0)
@@ -74,6 +75,7 @@ public:
         m_listener.waitForTransform(m_worldFrame, m_frame, ros::Time(0), ros::Duration(10.0)); 
         m_pubNav = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
         m_subscribeGoal = nh.subscribe("goal", 1, &Controller::goalChanged, this);
+        m_subscribeTwist = nh.subscribe("twist", 1, &Controller::getTwistData, this);
         m_serviceTakeoff = nh.advertiseService("takeoff", &Controller::takeoff, this);
         m_serviceLand = nh.advertiseService("land", &Controller::land, this);
     }
@@ -90,6 +92,12 @@ private:
         const geometry_msgs::PoseStamped::ConstPtr& msg)
     {
         m_goal = *msg;
+    }
+
+    void getTwistData(
+        const geometry_msgs::TwistStamped::ConstPtr& msg)
+    {
+        m_twistData = *msg;
     }
 
     bool takeoff(
@@ -154,6 +162,10 @@ private:
         /*ROS_INFO("Goal x = %f", m_goal.pose.position.x);
         ROS_INFO("Goal y = %f", m_goal.pose.position.y);
         ROS_INFO("Goal z = %f", m_goal.pose.position.z);*/
+
+        /*ROS_INFO("Vel x = %f", m_twistData.twist.linear.x);
+        ROS_INFO("Vel y = %f", m_twistData.twist.linear.y);
+        ROS_INFO("Vel z = %f", m_twistData.twist.linear.z);*/
 
         switch(m_state)
         {
@@ -226,9 +238,33 @@ private:
                 ROS_INFO("Error y = %f", m_HoverRMSEY);
                 ROS_INFO("Error z = %f", m_HoverRMSEZ);*/
 
-                if (m_HoverRMSEX < 0.005 && m_HoverRMSEY < 0.005 && m_HoverRMSEZ < 0.005)
+                if (m_HoverRMSEX < 0.05 && m_HoverRMSEY < 0.05 && m_HoverRMSEZ < 0.05)
                     m_state = Automatic;
+                
+                /*tf::StampedTransform transform1;
+                m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform1);
 
+                geometry_msgs::PoseStamped targetWorld1;
+                targetWorld1.header.stamp = transform1.stamp_;
+                targetWorld1.header.frame_id = m_worldFrame;
+                targetWorld1.pose = m_goal.pose;
+
+                geometry_msgs::PoseStamped targetDrone1;
+                m_listener.transformPose(m_frame, targetWorld1, targetDrone1);
+
+                tfScalar roll1, pitch1, yaw1;
+                tf::Matrix3x3(
+                    tf::Quaternion(
+                        targetDrone1.pose.orientation.x,
+                        targetDrone1.pose.orientation.y,
+                        targetDrone1.pose.orientation.z,
+                        targetDrone1.pose.orientation.w
+                    )).getRPY(roll1, pitch1, yaw1);*/
+
+                //ROS_INFO("roll = %f, pitch = %f, yaw = %f", roll1*180/3.14, pitch1*180/3.14, yaw1*180/3.14);
+                /*ROS_INFO("Error x = %f", targetDrone1.pose.position.x);
+                ROS_INFO("Error y = %f", targetDrone1.pose.position.y);
+                ROS_INFO("Error z = %f", targetDrone1.pose.position.z);*/
             }
             break;
         case Landing:
@@ -245,6 +281,7 @@ private:
             // intentional fall-thru
         case Automatic:
             {
+                ROS_INFO("Automatic mode initiated");
                 tf::StampedTransform transform;
                 m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform);
 
@@ -266,8 +303,48 @@ private:
                     )).getRPY(roll, pitch, yaw);
 
                 geometry_msgs::Twist msg;
-                msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
-                msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);
+
+                float s_x = targetDrone.pose.position.x*10 + 1910*m_twistData.twist.linear.x*fabs(m_twistData.twist.linear.x);
+                float s_y = targetDrone.pose.position.y*10 + 1910*m_twistData.twist.linear.y*fabs(m_twistData.twist.linear.y);
+
+                //ROS_INFO("s_x = %f, s_y = %f", s_x, s_y);
+
+                if (targetDrone.pose.position.x > 0.05)
+                {
+                    ROS_INFO("Error along X");
+                    if (s_x > 0.2)
+                    {
+                        ROS_INFO("-ve pitch");
+                        msg.linear.x = -5.0;
+                    }
+                    else if (s_x < -0.2)
+                    {
+                        ROS_INFO("+ve pitch");
+                        msg.linear.x = 5.0;
+                    }
+                    else
+                        msg.linear.x = 0.0;
+                }
+
+                if (targetDrone.pose.position.y > 0.05)
+                {
+                    ROS_INFO("Error along Y");
+                    if (s_y > 0.2)
+                    {
+                        ROS_INFO("-ve roll");
+                        msg.linear.y = -5.0;
+                    }
+                    else if (s_y < -0.2)
+                    {
+                        ROS_INFO("+ve roll");
+                        msg.linear.y = 5.0;
+                    }
+                    else
+                        msg.linear.y = 0.0;
+                }
+
+                /*msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
+                msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);*/
                 msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
                 msg.angular.z = m_pidYaw.update(0.0, yaw);
                 m_pubNav.publish(msg);
@@ -311,7 +388,9 @@ private:
     State m_state;
     geometry_msgs::PoseStamped m_goal;
     geometry_msgs::PoseStamped m_goal_temp;
+    geometry_msgs::TwistStamped m_twistData;
     ros::Subscriber m_subscribeGoal;
+    ros::Subscriber m_subscribeTwist;
     ros::ServiceServer m_serviceTakeoff;
     ros::ServiceServer m_serviceLand;
     float m_thrust;
