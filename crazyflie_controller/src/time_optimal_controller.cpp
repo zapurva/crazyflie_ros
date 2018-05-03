@@ -234,9 +234,7 @@ private:
                 m_HoverRMSEY = targetDrone.pose.position.y * targetDrone.pose.position.y;
                 m_HoverRMSEZ = targetDrone.pose.position.z * targetDrone.pose.position.z;
 
-                /*ROS_INFO("Error x = %f", m_HoverRMSEX);
-                ROS_INFO("Error y = %f", m_HoverRMSEY);
-                ROS_INFO("Error z = %f", m_HoverRMSEZ);*/
+                //ROS_INFO("Error x = %f, y = %f, z = %f", m_HoverRMSEX, m_HoverRMSEY, m_HoverRMSEZ);
 
                 if (m_HoverRMSEX < 0.05 && m_HoverRMSEY < 0.05 && m_HoverRMSEZ < 0.05)
                     m_state = Automatic;
@@ -259,7 +257,12 @@ private:
                         targetDrone1.pose.orientation.y,
                         targetDrone1.pose.orientation.z,
                         targetDrone1.pose.orientation.w
-                    )).getRPY(roll1, pitch1, yaw1);*/
+                    )).getRPY(roll1, pitch1, yaw1);
+
+                float s_x = targetDrone1.pose.position.x*10 + 1910*m_twistData.twist.linear.x*fabs(m_twistData.twist.linear.x);
+                float s_y = targetDrone1.pose.position.y*10 + 1910*m_twistData.twist.linear.y*fabs(m_twistData.twist.linear.y);
+
+                ROS_INFO("%f %f %f %f %f %f", s_x, s_y, targetDrone1.pose.position.x, m_twistData.twist.linear.x, targetDrone1.pose.position.y, m_twistData.twist.linear.y);*/
 
                 //ROS_INFO("roll = %f, pitch = %f, yaw = %f", roll1*180/3.14, pitch1*180/3.14, yaw1*180/3.14);
                 /*ROS_INFO("Error x = %f", targetDrone1.pose.position.x);
@@ -277,8 +280,32 @@ private:
                     geometry_msgs::Twist msg;
                     m_pubNav.publish(msg);
                 }
+
+                geometry_msgs::PoseStamped targetWorld;
+                targetWorld.header.stamp = transform.stamp_;
+                targetWorld.header.frame_id = m_worldFrame;
+                targetWorld.pose = m_goal.pose;
+
+                geometry_msgs::PoseStamped targetDrone;
+                m_listener.transformPose(m_frame, targetWorld, targetDrone);
+
+                tfScalar roll, pitch, yaw;
+                tf::Matrix3x3(
+                    tf::Quaternion(
+                        targetDrone.pose.orientation.x,
+                        targetDrone.pose.orientation.y,
+                        targetDrone.pose.orientation.z,
+                        targetDrone.pose.orientation.w
+                    )).getRPY(roll, pitch, yaw);
+
+                geometry_msgs::Twist msg;
+                msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
+                msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);
+                msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
+                msg.angular.z = m_pidYaw.update(0.0, yaw);
+                m_pubNav.publish(msg);
             }
-            // intentional fall-thru
+            break;
         case Automatic:
             {
                 ROS_INFO("Automatic mode initiated");
@@ -309,46 +336,76 @@ private:
 
                 //ROS_INFO("s_x = %f, s_y = %f", s_x, s_y);
 
-                if (targetDrone.pose.position.x > 0.05)
+                if (targetDrone.pose.position.x > 0.5 || targetDrone.pose.position.y > 0.5)
                 {
-                    ROS_INFO("Error along X");
-                    if (s_x > 0.2)
+                    ROS_INFO("Error present");
+                    //msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
+                    //msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);
+                    if (fabs(s_x) > 0.2 || fabs (s_y) > 0.2)
                     {
-                        ROS_INFO("-ve pitch");
-                        msg.linear.x = -5.0;
+                        if (s_x > 0.2 && s_y > 0.2)
+                        {
+                            ROS_INFO("Case 1");
+                            msg.linear.x = -10.0;
+                            msg.linear.y = -10.0;
+                        }
+                        else if (s_x < -0.2 && s_y > 0.2)
+                        {
+                            ROS_INFO("Case 2");
+                            msg.linear.x = 10.0;
+                            msg.linear.y = -10.0;
+                        }
+                        else if (s_x < -0.2 && s_y < -0.2)
+                        {
+                            ROS_INFO("Case 3");
+                            msg.linear.x = 10.0;
+                            msg.linear.y = 10.0;
+                        }
+                        else if (s_x > 0.2 && s_y < -0.2)
+                        {
+                            ROS_INFO("Case 4");
+                            msg.linear.x = -10.0;
+                            msg.linear.y = 10.0;
+                        }
                     }
-                    else if (s_x < -0.2)
-                    {
-                        ROS_INFO("+ve pitch");
-                        msg.linear.x = 5.0;
-                    }
+                    
                     else
+                    {
+                        ROS_INFO("Case 5");
                         msg.linear.x = 0.0;
+                        msg.linear.y = 0.0;
+                    }
+                    msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
+                    msg.angular.z = m_pidYaw.update(0.0, yaw);
+                    m_pubNav.publish(msg);    
                 }
 
-                if (targetDrone.pose.position.y > 0.05)
+                /*if (targetDrone.pose.position.y > 0.1)
                 {
-                    ROS_INFO("Error along Y");
+                    //ROS_INFO("Error along Y");
+                    
                     if (s_y > 0.2)
                     {
-                        ROS_INFO("-ve roll");
-                        msg.linear.y = -5.0;
+                        //ROS_INFO("-ve roll");
+                        msg.linear.y = -10.0;
                     }
                     else if (s_y < -0.2)
                     {
-                        ROS_INFO("+ve roll");
-                        msg.linear.y = 5.0;
+                        //ROS_INFO("+ve roll");
+                        msg.linear.y = 10.0;
                     }
                     else
                         msg.linear.y = 0.0;
+                }*/
+                else
+                { 
+                    ROS_INFO("No error present");
+                    msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
+                    msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);
+                    msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
+                    msg.angular.z = m_pidYaw.update(0.0, yaw);
+                    m_pubNav.publish(msg);
                 }
-
-                /*msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
-                msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);*/
-                msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
-                msg.angular.z = m_pidYaw.update(0.0, yaw);
-                m_pubNav.publish(msg);
-
                 /*ROS_INFO("x = %f",targetDrone.pose.position.x);
                 ROS_INFO("y = %f",targetDrone.pose.position.y);
                 ROS_INFO("roll = %f", roll);
