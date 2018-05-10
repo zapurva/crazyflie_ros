@@ -14,19 +14,21 @@ double get(
     return value;
 }
 
-class Controller
+class Follower
 {
 public:
 
-    Controller(
+    Follower(
         const std::string& worldFrame,
-        const std::string& frame,
+        const std::string& leaderFrame,
+        const std::string& followerFrame,
         const ros::NodeHandle& n)
         : m_worldFrame(worldFrame)
-        , m_frame(frame)
+        , m_frame_leader(leaderFrame)
+        , m_frame_follower(followerFrame)
         , m_getTwistData()
         , m_pubNav()
-        , m_listener()
+        , m_listener_follower()
         , m_pidX(
             get(n, "PIDs/X/kp"),
             get(n, "PIDs/X/kd"),
@@ -73,19 +75,20 @@ public:
         , m_startZ(0)
     {
         ros::NodeHandle nh;
-        m_listener.waitForTransform(m_worldFrame, m_frame, ros::Time(0), ros::Duration(10.0)); 
+        m_listener_leader.waitForTransform(m_worldFrame, m_frame_leader, ros::Time(0), ros::Duration(10.0)); 
+        m_listener_follower.waitForTransform(m_worldFrame, m_frame_follower, ros::Time(0), ros::Duration(10.0)); 
         m_pubNav = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
-        m_subscribeGoal = nh.subscribe("goal", 1, &Controller::goalChanged, this);
-        m_getTwistData = m_frame + "/twist";
-        m_subscribeTwist = nh.subscribe(m_getTwistData, 1, &Controller::getTwistData, this);
-        m_serviceTakeoff = nh.advertiseService("takeoff", &Controller::takeoff, this);
-        m_serviceLand = nh.advertiseService("land", &Controller::land, this);
+        m_subscribeGoal = nh.subscribe("goal", 1, &Follower::goalChanged, this);
+        m_getTwistData = m_frame_follower + "/twist";
+        m_subscribeTwist = nh.subscribe(m_getTwistData, 1, &Follower::getTwistData, this);
+        m_serviceTakeoff = nh.advertiseService("takeoff", &Follower::takeoff, this);
+        m_serviceLand = nh.advertiseService("land", &Follower::land, this);
     }
 
     void run(double frequency)
     {
         ros::NodeHandle node;
-        ros::Timer timer = node.createTimer(ros::Duration(1.0/frequency), &Controller::iteration, this);
+        ros::Timer timer = node.createTimer(ros::Duration(1.0/frequency), &Follower::iteration, this);
         ros::spin();
     }
 
@@ -109,17 +112,17 @@ private:
         ROS_INFO("Takeoff requested!");
         m_state = TakingOff;
 
-        tf::StampedTransform transform;
-        m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform);
+        tf::StampedTransform transformFollower;
+        m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
 
         /*ROS_INFO("Goal1 x = %f", m_goal.pose.position.x);
         ROS_INFO("Goal1 y = %f", m_goal.pose.position.y);
         ROS_INFO("Goal1 z = %f", m_goal.pose.position.z);*/
 
-        m_startZ = transform.getOrigin().z();
+        m_startZ = transformFollower.getOrigin().z();
 
-        m_startX = transform.getOrigin().x();
-        m_startY = transform.getOrigin().y();
+        m_startX = transformFollower.getOrigin().x();
+        m_startY = transformFollower.getOrigin().y();
 
         return true;
     }
@@ -132,14 +135,6 @@ private:
         m_state = Landing;
 
         return true;
-    }
-
-    void getTransform(
-        const std::string& sourceFrame,
-        const std::string& targetFrame,
-        tf::StampedTransform& result)
-    {
-        m_listener.lookupTransform(sourceFrame, targetFrame, ros::Time(0), result);
     }
 
     void pidReset()
@@ -173,10 +168,10 @@ private:
         {
         case TakingOff:
             {
-                tf::StampedTransform transform;
-                m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform);
+                tf::StampedTransform transformFollower;
+                m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
 
-                if (transform.getOrigin().z() > m_startZ + 0.05 || m_thrust > 50000)
+                if (transformFollower.getOrigin().z() > m_startZ + 0.05 || m_thrust > 50000)
                 {
                     pidReset();
                     m_pidZ.setIntegral(m_thrust / m_pidZ.ki());
@@ -205,16 +200,16 @@ private:
             break;
         case GoToZDesired:
             {
-                tf::StampedTransform transform;
-                m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform);
+                tf::StampedTransform transformFollower;
+                m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
 
                 geometry_msgs::PoseStamped targetWorld;
-                targetWorld.header.stamp = transform.stamp_;
+                targetWorld.header.stamp = transformFollower.stamp_;
                 targetWorld.header.frame_id = m_worldFrame;
                 targetWorld.pose = m_goal_temp.pose;
 
                 geometry_msgs::PoseStamped targetDrone;
-                m_listener.transformPose(m_frame, targetWorld, targetDrone);
+                m_listener_follower.transformPose(m_frame_follower, targetWorld, targetDrone);
 
                 tfScalar roll, pitch, yaw;
                 tf::Matrix3x3(
@@ -240,56 +235,48 @@ private:
 
                 if (m_HoverRMSEX < 0.05 && m_HoverRMSEY < 0.05 && m_HoverRMSEZ < 0.05)
                     m_state = Automatic;
-                
-                /*tf::StampedTransform transform1;
-                m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform1);
 
-                geometry_msgs::PoseStamped targetWorld1;
-                targetWorld1.header.stamp = transform1.stamp_;
-                targetWorld1.header.frame_id = m_worldFrame;
-                targetWorld1.pose = m_goal.pose;
+                /*tf::StampedTransform transformLeader;
+                m_listener_leader.lookupTransform(m_worldFrame, m_frame_leader, ros::Time(0), transformLeader);
+
+                ROS_INFO("Leader x = %f, y = %f, z = %f", transformLeader.getOrigin().x(), transformLeader.getOrigin().y(), transformLeader.getOrigin().z());
+                
+                //tf::StampedTransform transformFollower;
+                //m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
+
+                geometry_msgs::PoseStamped targetLeader;
+                targetLeader.header.stamp = transformFollower.stamp_;
+                targetLeader.header.frame_id = m_worldFrame;
+                targetLeader.pose = m_goal.pose;
+
+                targetLeader.pose.position.x = transformLeader.getOrigin().x();
+                targetLeader.pose.position.y = transformLeader.getOrigin().y();
 
                 geometry_msgs::PoseStamped targetDrone1;
-                m_listener.transformPose(m_frame, targetWorld1, targetDrone1);
+                m_listener_follower.transformPose(m_frame_follower, targetLeader, targetDrone1);
 
-                tfScalar roll1, pitch1, yaw1;
-                tf::Matrix3x3(
-                    tf::Quaternion(
-                        targetDrone1.pose.orientation.x,
-                        targetDrone1.pose.orientation.y,
-                        targetDrone1.pose.orientation.z,
-                        targetDrone1.pose.orientation.w
-                    )).getRPY(roll1, pitch1, yaw1);*/
+                ROS_INFO("targetDrone x = %f, y = %f, z = %f", targetDrone1.pose.position.x, targetDrone1.pose.position.y, targetDrone1.pose.position.z);*/
 
-                //float s_x = targetDrone1.pose.position.x + (1/2*0.1744)*m_twistData.twist.linear.x*fabs(m_twistData.twist.linear.x);
-                //float s_y = targetDrone1.pose.position.y + (1/2*0.1744)*m_twistData.twist.linear.y*fabs(m_twistData.twist.linear.y);
-
-                //ROS_INFO("%f %f %f %f %f %f", s_x, s_y, targetDrone1.pose.position.x, m_twistData.twist.linear.x, targetDrone1.pose.position.y, m_twistData.twist.linear.y);
-
-                //ROS_INFO("roll = %f, pitch = %f, yaw = %f", roll1*180/3.14, pitch1*180/3.14, yaw1*180/3.14);
-                /*ROS_INFO("Error x = %f", targetDrone1.pose.position.x);
-                ROS_INFO("Error y = %f", targetDrone1.pose.position.y);
-                ROS_INFO("Error z = %f", targetDrone1.pose.position.z);*/
             }
             break;
         case Landing:
             {
                 m_goal.pose.position.z = m_startZ + 0.05;
-                tf::StampedTransform transform;
-                m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform);
-                if (transform.getOrigin().z() <= m_startZ + 0.05) {
+                tf::StampedTransform transformFollower;
+                m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
+                if (transformFollower.getOrigin().z() <= m_startZ + 0.05) {
                     m_state = Idle;
                     geometry_msgs::Twist msg;
                     m_pubNav.publish(msg);
                 }
 
                 geometry_msgs::PoseStamped targetWorld;
-                targetWorld.header.stamp = transform.stamp_;
+                targetWorld.header.stamp = transformFollower.stamp_;
                 targetWorld.header.frame_id = m_worldFrame;
                 targetWorld.pose = m_goal.pose;
 
                 geometry_msgs::PoseStamped targetDrone;
-                m_listener.transformPose(m_frame, targetWorld, targetDrone);
+                m_listener_follower.transformPose(m_frame_follower, targetWorld, targetDrone);
 
                 tfScalar roll, pitch, yaw;
                 tf::Matrix3x3(
@@ -310,17 +297,38 @@ private:
             break;
         case Automatic:
             {
-                ROS_INFO("Automatic mode initiated");
-                tf::StampedTransform transform;
-                m_listener.lookupTransform(m_worldFrame, m_frame, ros::Time(0), transform);
+                //ROS_INFO("Automatic mode initiated");
+                tf::StampedTransform transformFollower;
+                m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
 
-                geometry_msgs::PoseStamped targetWorld;
-                targetWorld.header.stamp = transform.stamp_;
-                targetWorld.header.frame_id = m_worldFrame;
-                targetWorld.pose = m_goal.pose;
+                //geometry_msgs::PoseStamped targetWorld;
+                //targetWorld.header.stamp = transformFollower.stamp_;
+                //targetWorld.header.frame_id = m_worldFrame;
+                //targetWorld.pose = m_goal.pose;
+
+                //geometry_msgs::PoseStamped targetDrone;
+                //m_listener_follower.transformPose(m_frame_follower, targetWorld, targetDrone);
+
+                tf::StampedTransform transformLeader;
+                m_listener_leader.lookupTransform(m_worldFrame, m_frame_leader, ros::Time(0), transformLeader);
+
+                //ROS_INFO("Leader x = %f, y = %f, z = %f", transformLeader.getOrigin().x(), transformLeader.getOrigin().y(), transformLeader.getOrigin().z());
+                
+                //tf::StampedTransform transformFollower;
+                //m_listener_follower.lookupTransform(m_worldFrame, m_frame_follower, ros::Time(0), transformFollower);
+
+                geometry_msgs::PoseStamped targetLeader;
+                targetLeader.header.stamp = transformFollower.stamp_;
+                targetLeader.header.frame_id = m_worldFrame;
+                targetLeader.pose = m_goal.pose;
+
+                targetLeader.pose.position.x = transformLeader.getOrigin().x();
+                targetLeader.pose.position.y = transformLeader.getOrigin().y();
 
                 geometry_msgs::PoseStamped targetDrone;
-                m_listener.transformPose(m_frame, targetWorld, targetDrone);
+                m_listener_follower.transformPose(m_frame_follower, targetLeader, targetDrone);
+
+                //ROS_INFO("targetDrone x = %f, y = %f, z = %f", targetDrone1.pose.position.x, targetDrone1.pose.position.y, targetDrone1.pose.position.z);
 
                 tfScalar roll, pitch, yaw;
                 tf::Matrix3x3(
@@ -332,13 +340,19 @@ private:
                     )).getRPY(roll, pitch, yaw);
 
                 geometry_msgs::Twist msg;
+                msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
+                msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);
+                msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
+                msg.angular.z = m_pidYaw.update(0.0, yaw);
+                m_pubNav.publish(msg);
 
-                float s_x = targetDrone.pose.position.x + (1/2*0.1744)*m_twistData.twist.linear.x*fabs(m_twistData.twist.linear.x);
-                float s_y = targetDrone.pose.position.y + (1/2*0.1744)*m_twistData.twist.linear.y*fabs(m_twistData.twist.linear.y);
+                //**********************TIME OPTIMAL CONTROLLER***********************
+                //float s_x = targetDrone.pose.position.x + (1/2*0.1744)*m_twistData.twist.linear.x*fabs(m_twistData.twist.linear.x);
+                //float s_y = targetDrone.pose.position.y + (1/2*0.1744)*m_twistData.twist.linear.y*fabs(m_twistData.twist.linear.y);
 
                 //ROS_INFO("s_x = %f, s_y = %f", s_x, s_y);
 
-                if (targetDrone.pose.position.x > 0.25 || targetDrone.pose.position.y > 0.25)
+                /*if (targetDrone.pose.position.x > 0.25 || targetDrone.pose.position.y > 0.25)
                 {
                     ROS_INFO("Error present");
                     //msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
@@ -395,23 +409,6 @@ private:
                     m_pubNav.publish(msg);
                 }
 
-                /*if (targetDrone.pose.position.y > 0.1)
-                {
-                    //ROS_INFO("Error along Y");
-                    
-                    if (s_y > 0.2)
-                    {
-                        //ROS_INFO("-ve roll");
-                        msg.linear.y = -10.0;
-                    }
-                    else if (s_y < -0.2)
-                    {
-                        //ROS_INFO("+ve roll");
-                        msg.linear.y = 10.0;
-                    }
-                    else
-                        msg.linear.y = 0.0;
-                }*/
                 else
                 { 
                     ROS_INFO("No error present");
@@ -420,8 +417,8 @@ private:
                     msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
                     msg.angular.z = m_pidYaw.update(0.0, yaw);
                     m_pubNav.publish(msg);
-                }
-
+                }*/
+                //***************************************************************************
             }
             break;
         case Idle:
@@ -446,11 +443,13 @@ private:
 
 private:
     std::string m_worldFrame;
-    std::string m_frame;
+    std::string m_frame_leader;
+    std::string m_frame_follower;
     std::string m_getTwistData;
 
     ros::Publisher m_pubNav;
-    tf::TransformListener m_listener;
+    tf::TransformListener m_listener_leader;
+    tf::TransformListener m_listener_follower;
     PID m_pidX;
     PID m_pidY;
     PID m_pidZ;
@@ -470,19 +469,21 @@ private:
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "controller");
+  ros::init(argc, argv, "follower");
 
   // Read parameters
   ros::NodeHandle n("~");
   std::string worldFrame;
   n.param<std::string>("worldFrame", worldFrame, "/world");
-  std::string frame;
-  n.getParam("frame", frame);
+  std::string leaderFrame;
+  std::string followerFrame;
+  n.getParam("frame_leader", leaderFrame);
+  n.getParam("frame_follower", followerFrame);
   double frequency;
   n.param("frequency", frequency, 50.0);
 
-  Controller controller(worldFrame, frame, n);
-  controller.run(frequency);
+  Follower follower(worldFrame, leaderFrame, followerFrame, n);
+  follower.run(frequency);
 
   return 0;
 }

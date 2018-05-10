@@ -104,6 +104,9 @@ add_executable(controller
 add_executable(time_optimal_controller
   src/time_optimal_controller.cpp)
 
+add_executable(leader_follower_temp
+  src/leader_follower.cpp)
+
 # Add cmake target dependencies of the executable/library
 # as an example, message headers may need to be generated before nodes
 # add_dependencies(crazyflie_controller crazyflie_controller_generate_messages_cpp)
@@ -114,6 +117,10 @@ target_link_libraries(controller
 )
 
 target_link_libraries(time_optimal_controller
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(leader_follower
   ${catkin_LIBRARIES}
 )
 
