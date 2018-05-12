@@ -47,10 +47,10 @@ if __name__ == '__main__':
         if lastData != None:
             if fabs(lastData.axes[1]) > 0.1:
                 msg.pose.position.z += lastData.axes[1] / r / 2
-            if fabs(lastData.axes[4]) > 0.1:
-                msg.pose.position.x += lastData.axes[4] / r * 1
+            if fabs(lastData.axes[2]) > 0.1:
+                msg.pose.position.x += lastData.axes[2] / r * 1
             if fabs(lastData.axes[3]) > 0.1:
-                msg.pose.position.y += lastData.axes[3] / r * 1
+                msg.pose.position.y += -lastData.axes[3] / r * 1
             if fabs(lastData.axes[0]) > 0.1:
                 yaw += lastData.axes[0] / r * 2
             quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)

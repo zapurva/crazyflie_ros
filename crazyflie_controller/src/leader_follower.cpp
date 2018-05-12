@@ -22,10 +22,14 @@ public:
         const std::string& worldFrame,
         const std::string& leaderFrame,
         const std::string& followerFrame,
+        const float& xOffset,
+        const float& yOffset,
         const ros::NodeHandle& n)
         : m_worldFrame(worldFrame)
         , m_frame_leader(leaderFrame)
         , m_frame_follower(followerFrame)
+        , m_xOffset(xOffset)
+        , m_yOffset(yOffset)
         , m_getTwistData()
         , m_pubNav()
         , m_listener_follower()
@@ -322,8 +326,8 @@ private:
                 targetLeader.header.frame_id = m_worldFrame;
                 targetLeader.pose = m_goal.pose;
 
-                targetLeader.pose.position.x = transformLeader.getOrigin().x();
-                targetLeader.pose.position.y = transformLeader.getOrigin().y();
+                targetLeader.pose.position.x = transformLeader.getOrigin().x() + m_xOffset;
+                targetLeader.pose.position.y = transformLeader.getOrigin().y() + m_yOffset;
 
                 geometry_msgs::PoseStamped targetDrone;
                 m_listener_follower.transformPose(m_frame_follower, targetLeader, targetDrone);
@@ -465,6 +469,7 @@ private:
     float m_thrust;
     float m_startZ, m_startX, m_startY;
     float m_HoverRMSEX, m_HoverRMSEY, m_HoverRMSEZ;
+    float m_xOffset, m_yOffset;
 };
 
 int main(int argc, char **argv)
@@ -479,10 +484,14 @@ int main(int argc, char **argv)
   std::string followerFrame;
   n.getParam("frame_leader", leaderFrame);
   n.getParam("frame_follower", followerFrame);
+  float xOffset, yOffset;
+  n.getParam("xOffset", xOffset);
+  n.getParam("yOffset", yOffset);
+  //ROS_INFO("Received offsets %f and %f", xOffset, yOffset);
   double frequency;
   n.param("frequency", frequency, 50.0);
 
-  Follower follower(worldFrame, leaderFrame, followerFrame, n);
+  Follower follower(worldFrame, leaderFrame, followerFrame, xOffset, yOffset, n);
   follower.run(frequency);
 
   return 0;
